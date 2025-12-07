@@ -389,6 +389,33 @@ const sendMessage = async (req, res) => {
     }
 };
 
+// Função para buscar a lista de contatos salvos do usuário logado
+const getSavedContacts = async (req, res) => {
+    const userId = getCurrentUserId(req);
+
+    try {
+        const [contacts] = await db.query(
+            `
+            SELECT 
+                uc.contact_id AS id,
+                uc.alias_name AS name,
+                u.email AS email,
+                u.image_url AS image_url
+            FROM user_contacts uc
+            JOIN users u ON uc.contact_id = u.id
+            WHERE uc.user_id = ?
+            ORDER BY uc.alias_name ASC;
+            `,
+            [userId]
+        );
+
+        res.json(contacts);
+    } catch (error) {
+        console.error('Error fetching saved contacts:', error);
+        res.status(500).json({ message: 'Server error fetching saved contacts', error: error.message });
+    }
+};
+
 
 module.exports = { 
     register, 
@@ -400,5 +427,6 @@ module.exports = {
     getConversationMessages, 
     sendMessage,
     getUserProfile,
-    saveContactAlias // EXPORTADO
+    saveContactAlias,
+    getSavedContacts // NOVO EXPORT
 };
