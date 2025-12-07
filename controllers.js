@@ -1,8 +1,8 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('./db');
-const cloudinary = require('./cloudinary');
-const { Readable } = require('stream');
+// REMOVIDO: const cloudinary = require('./cloudinary');
+// REMOVIDO: const { Readable } = require('stream');
 require('dotenv').config();
 
 // Helper function to get the current user ID from the request object (set by authenticateToken middleware)
@@ -65,35 +65,8 @@ const login = async (req, res) => {
     }
 };
 
-const uploadImage = async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ message: 'No file uploaded' });
-    }
+// REMOVIDA: const uploadImage = async (req, res) => { ... }
 
-    try {
-        const streamUpload = (buffer) => {
-            return new Promise((resolve, reject) => {
-                const stream = cloudinary.uploader.upload_stream(
-                    { folder: 'site_uploads' },
-                    (error, result) => {
-                        if (result) {
-                            resolve(result);
-                        } else {
-                            reject(error);
-                        }
-                    }
-                );
-                Readable.from(buffer).pipe(stream);
-            });
-        };
-
-        const result = await streamUpload(req.file.buffer);
-        res.json({ url: result.secure_url, public_id: result.public_id });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Upload failed' });
-    }
-};
 
 const searchUserByEmail = async (req, res) => {
     const { email } = req.query;
@@ -349,6 +322,7 @@ const sendMessage = async (req, res) => {
 
     try {
         const [result] = await db.query(
+            // O campo 'type' agora pode ser 'text', 'image' ou 'video'
             'INSERT INTO messages (conversation_id, sender_id, content, type) VALUES (?, ?, ?, ?)',
             [conversation_id, senderId, content, type]
         );
@@ -420,7 +394,7 @@ const getSavedContacts = async (req, res) => {
 module.exports = { 
     register, 
     login, 
-    uploadImage, 
+    // REMOVIDO: uploadImage, 
     searchUserByEmail, 
     startNewConversation, 
     getConversations,
@@ -428,5 +402,5 @@ module.exports = {
     sendMessage,
     getUserProfile,
     saveContactAlias,
-    getSavedContacts // NOVO EXPORT
+    getSavedContacts
 };
