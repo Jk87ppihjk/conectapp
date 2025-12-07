@@ -2,12 +2,13 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('./db');
 const cloudinary = require('./cloudinary');
-const { Readable } = require('stream'); // CORRIGIDO: Apenas um 'require'
+const { Readable } = require('stream');
 require('dotenv').config();
 
 // Helper function to get the current user ID from the request object (set by authenticateToken middleware)
 const getCurrentUserId = (req) => {
-    return req.user ? req.user.id : null;
+    // Certifica-se de que o ID é tratado como número, se possível
+    return req.user ? parseInt(req.user.id, 10) : null;
 };
 
 const register = async (req, res) => {
@@ -25,6 +26,7 @@ const register = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        // O campo 'name' e 'image_url' podem ser NULL inicialmente
         await db.query('INSERT INTO users (email, password) VALUES (?, ?)', [email, hashedPassword]);
 
         res.status(201).json({ message: 'User registered successfully' });
@@ -169,6 +171,29 @@ const startNewConversation = async (req, res) => {
     }
 };
 
+// NOVO: Função para salvar o apelido do contato
+const saveContactAlias = async (req, res) => {
+    const userId = getCurrentUserId(req);
+    const { contactId, aliasName } = req.body;
+
+    if (!contactId || !aliasName) {
+        return res.status(400).json({ message: 'Contact ID and alias name are required' });
+    }
+
+    try {
+        // Insere ou atualiza o apelido na nova tabela
+        await db.query(
+            `INSERT INTO user_contacts (user_id, contact_id, alias_name) VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE alias_name = VALUES(alias_name)`,
+            [userId, contactId, aliasName]
+        );
+        res.status(200).json({ message: 'Contact alias saved successfully' });
+    } catch (error) {
+        console.error('Error saving contact alias:', error);
+        res.status(500).json({ message: 'Server error while saving alias' });
+    }
+};
+
 
 const getConversations = async (req, res) => {
     const userId = getCurrentUserId(req);
@@ -180,7 +205,8 @@ const getConversations = async (req, res) => {
                 c.id AS conversationId,
                 c.updated_at AS lastActive,
                 u.id AS contactId,
-                u.name AS contactName,
+                -- PRIORIZA o alias, depois o nome do usuário, depois o email
+                COALESCE(uc.alias_name, u.name, u.email) AS contactName,
                 u.image_url AS contactImage,
                 m.content AS lastMessageContent,
                 m.sender_id AS lastMessageSenderId
@@ -190,6 +216,8 @@ const getConversations = async (req, res) => {
                 ON c.id = cp2.conversation_id 
                 AND cp2.user_id != ? 
             JOIN users u ON cp2.user_id = u.id
+            -- NOVO JOIN para buscar o alias do contato
+            LEFT JOIN user_contacts uc ON uc.user_id = cp.user_id AND uc.contact_id = u.id
             LEFT JOIN messages m ON m.conversation_id = c.id
                 AND m.id = (
                     SELECT MAX(id)
@@ -207,7 +235,7 @@ const getConversations = async (req, res) => {
             
             return {
                 id: conv.conversationId,
-                contactName: conv.contactName || 'Contato Desconhecido',
+                contactName: conv.contactName || 'Usuário Desconhecido', 
                 contactImage: conv.contactImage,
                 lastMessageContent: conv.lastMessageContent ? (senderPrefix + conv.lastMessageContent) : 'Nenhuma mensagem.',
                 lastActive: conv.lastActive,
@@ -267,15 +295,22 @@ const getConversationMessages = async (req, res) => {
             return res.status(403).json({ message: 'Access denied to this conversation' });
         }
 
+        // 2. Buscar detalhes do contato (o outro participante) com alias
         const [otherParticipantRows] = await db.query(
-            `SELECT u.name, u.image_url 
+            `SELECT 
+                u.id AS id, 
+                -- PRIORIZA o alias, depois o nome do usuário, depois o email
+                COALESCE(uc.alias_name, u.name, u.email) AS name, 
+                u.image_url 
              FROM conversation_participants cp
              JOIN users u ON cp.user_id = u.id
+             -- NOVO JOIN para buscar o alias do contato
+             LEFT JOIN user_contacts uc ON uc.user_id = ? AND uc.contact_id = u.id
              WHERE cp.conversation_id = ? AND cp.user_id != ?`,
-            [conversationId, currentUserId]
+            [currentUserId, conversationId, currentUserId]
         );
         
-        const contact = otherParticipantRows[0] || { name: 'Usuário Desconhecido', image_url: null };
+        const contact = otherParticipantRows[0] || { name: 'Usuário', image_url: null };
 
         const [messages] = await db.query(
             'SELECT id, sender_id as senderId, content, type, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC',
@@ -364,5 +399,6 @@ module.exports = {
     getConversations,
     getConversationMessages, 
     sendMessage,
-    getUserProfile 
+    getUserProfile,
+    saveContactAlias // EXPORTADO
 };
