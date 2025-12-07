@@ -18,16 +18,13 @@ const register = async (req, res) => {
     }
 
     try {
-        // Check if user exists
         const [rows] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
         if (rows.length > 0) {
             return res.status(409).json({ message: 'User already exists' });
         }
 
-        // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Insert user
         await db.query('INSERT INTO users (email, password) VALUES (?, ?)', [email, hashedPassword]);
 
         res.status(201).json({ message: 'User registered successfully' });
@@ -139,7 +136,6 @@ const startNewConversation = async (req, res) => {
     const targetId = parseInt(targetUserId, 10);
 
     try {
-        // Verifica se a conversa 1-para-1 já existe
         const [existing] = await db.query(
             `SELECT cp1.conversation_id 
              FROM conversation_participants cp1
@@ -155,13 +151,11 @@ const startNewConversation = async (req, res) => {
             });
         }
         
-        // 1. Cria a nova conversa
         const [convResult] = await db.query(
             'INSERT INTO conversations () VALUES ()'
         );
         const conversationId = convResult.insertId;
 
-        // 2. Adiciona os dois participantes
         await db.query(
             'INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?), (?, ?)',
             [conversationId, userId, conversationId, targetId]
@@ -192,19 +186,15 @@ const getConversations = async (req, res) => {
                 m.sender_id AS lastMessageSenderId
             FROM conversations c
             JOIN conversation_participants cp ON c.id = cp.conversation_id
-            -- Encontra o ID do outro participante (cp2) que não é o usuário logado (?)
             JOIN conversation_participants cp2 ON c.id = cp2.conversation_id AND cp2.user_id != ?
-            -- Junta com a tabela de usuários para obter os dados do contato
             JOIN users u ON cp2.user_id = u.id
-            -- Junta com a tabela de mensagens para obter a última mensagem
             LEFT JOIN messages m ON m.conversation_id = c.id
                 AND m.id = (
-                    -- Subconsulta para encontrar o ID da última mensagem para esta conversa
                     SELECT MAX(id)
                     FROM messages
                     WHERE conversation_id = c.id
                 )
-            WHERE cp.user_id = ? -- Filtra apenas as conversas do usuário logado
+            WHERE cp.user_id = ?
             ORDER BY c.updated_at DESC;
             `,
             [userId, userId]
@@ -231,13 +221,37 @@ const getConversations = async (req, res) => {
     }
 };
 
+const getUserProfile = async (req, res) => {
+    const userId = getCurrentUserId(req);
+
+    try {
+        const [rows] = await db.query(
+            'SELECT id, email, name, image_url FROM users WHERE id = ?',
+            [userId]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const user = rows[0];
+        res.json({
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            image_url: user.image_url
+        });
+    } catch (error) {
+        console.error('Error fetching user profile:', error);
+        res.status(500).json({ message: 'Server error fetching user profile' });
+    }
+};
 
 const getConversationMessages = async (req, res) => {
     const conversationId = req.params.id;
     const currentUserId = getCurrentUserId(req);
 
     try {
-        // 1. Verificar se o usuário faz parte da conversa
         const [isParticipant] = await db.query(
             'SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
             [conversationId, currentUserId]
@@ -247,7 +261,6 @@ const getConversationMessages = async (req, res) => {
             return res.status(403).json({ message: 'Access denied to this conversation' });
         }
 
-        // 2. Buscar detalhes do contato (o outro participante)
         const [otherParticipantRows] = await db.query(
             `SELECT u.name, u.image_url 
              FROM conversation_participants cp
@@ -258,7 +271,6 @@ const getConversationMessages = async (req, res) => {
         
         const contact = otherParticipantRows[0] || { name: 'Usuário Desconhecido', image_url: null };
 
-        // 3. Buscar mensagens
         const [messages] = await db.query(
             'SELECT id, sender_id as senderId, content, type, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC',
             [conversationId]
@@ -285,18 +297,16 @@ const getConversationMessages = async (req, res) => {
     }
 };
 
-// ATUALIZADO: Inclui a emissão do evento WebSocket
 const sendMessage = async (req, res) => {
     const senderId = getCurrentUserId(req);
     const { conversation_id, content, type = 'text' } = req.body;
-    const io = req.app.get('socketio'); // Obtém a instância do Socket.IO
+    const io = req.app.get('socketio');
 
     if (!conversation_id || !content) {
         return res.status(400).json({ message: 'Conversation ID and content are required' });
     }
 
     try {
-        // 1. Insere a nova mensagem no banco de dados
         const [result] = await db.query(
             'INSERT INTO messages (conversation_id, sender_id, content, type) VALUES (?, ?, ?, ?)',
             [conversation_id, senderId, content, type]
@@ -304,18 +314,15 @@ const sendMessage = async (req, res) => {
         
         const messageId = result.insertId;
 
-        // 2. Atualiza o timestamp da conversa (para ordenar na lista de chats)
         await db.query(
             'UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
             [conversation_id]
         );
         
-        // 3. Obtém o timestamp da mensagem salva para enviar via Socket.IO
         const [messageRow] = await db.query('SELECT created_at FROM messages WHERE id = ?', [messageId]);
         const created_at = messageRow.length > 0 ? messageRow[0].created_at : new Date().toISOString();
 
 
-        // 4. EMITE O EVENTO SOCKET.IO para todos os participantes da conversa (exceto o remetente)
         const newMessage = {
             id: messageId,
             conversation_id: conversation_id,
@@ -327,10 +334,6 @@ const sendMessage = async (req, res) => {
         };
 
         if (io) {
-             // io.to(conversation_id).emit(...) envia para todos na sala, incluindo o remetente
-             // socket.to(room).emit() é usado dentro de um evento socket.on('message')
-             // Aqui, usamos o io global, então precisamos garantir que o remetente saiba.
-             // Para simplificar, enviaremos para todos na sala da conversa.
              io.to(conversation_id).emit('new_message', newMessage);
         }
 
@@ -354,5 +357,6 @@ module.exports = {
     startNewConversation, 
     getConversations,
     getConversationMessages, 
-    sendMessage
+    sendMessage,
+    getUserProfile // EXPORTADO
 };
