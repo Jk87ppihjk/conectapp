@@ -3,7 +3,7 @@ const router = express.Router();
 const { 
     register, 
     login, 
-    uploadImage, 
+    // REMOVIDO: uploadImage, 
     searchUserByEmail, 
     startNewConversation, 
     getConversations,
@@ -13,6 +13,7 @@ const {
     saveContactAlias, // Importado para salvar o apelido do contato
     getSavedContacts // Importado para listar os contatos salvos
 } = require('./controllers');
+const { uploadMedia } = require('./mediaControllers'); // NOVO: Importa o controller de mídia
 const { authenticateToken, upload } = require('./middleware');
 
 // Rotas de Autenticação
@@ -38,8 +39,9 @@ router.get('/conversations/:id', authenticateToken, getConversationMessages);
 router.post('/messages', authenticateToken, sendMessage);
 
 
-// Protected route example: Image upload
-router.post('/upload', authenticateToken, upload.single('image'), uploadImage);
+// Rota Protegida para Upload de Mídia (Imagens e Vídeos)
+// O nome do campo do arquivo no formulário deve ser 'media'
+router.post('/upload', authenticateToken, upload.single('media'), uploadMedia);
 
 // Public test route
 router.get('/ping', (req, res) => {
