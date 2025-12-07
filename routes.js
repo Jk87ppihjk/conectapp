@@ -10,7 +10,8 @@ const {
     getConversationMessages, 
     sendMessage,
     getUserProfile,
-    saveContactAlias // IMPORTADO
+    saveContactAlias, // Importado para salvar o apelido do contato
+    getSavedContacts // Importado para listar os contatos salvos
 } = require('./controllers');
 const { authenticateToken, upload } = require('./middleware');
 
@@ -22,8 +23,11 @@ router.post('/auth/login', login);
 router.get('/user/profile', authenticateToken, getUserProfile); 
 router.get('/users/search-by-email', authenticateToken, searchUserByEmail);
 
-// NOVO: Rota para salvar o nome/apelido local de um contato
+// Rota para salvar o nome/apelido local de um contato
 router.post('/user/contacts', authenticateToken, saveContactAlias); 
+
+// NOVO: Rota para listar contatos salvos
+router.get('/user/contacts', authenticateToken, getSavedContacts); 
 
 // Rotas de Conversa (Protegidas)
 router.get('/conversations', authenticateToken, getConversations); 
