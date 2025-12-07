@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('./db');
 const cloudinary = require('./cloudinary');
-const { Readable } = require('stream');
+const { Readable } = require require('stream');
 require('dotenv').config();
 
 // Helper function to get the current user ID from the request object (set by authenticateToken middleware)
@@ -200,7 +200,7 @@ const getConversations = async (req, res) => {
                     FROM messages
                     WHERE conversation_id = c.id
                 )
-            WHERE cp.user_id = ? -- Filtra apenas as conversas do usuário logado
+            WHERE cp.user_id = ? 
             ORDER BY c.updated_at DESC;
             `,
             [userId, userId] 
@@ -223,7 +223,7 @@ const getConversations = async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching conversations list:', error);
-        // ATUALIZADO: Retorna detalhes do erro para ajudar no debug do SQL
+        // Tratamento de erro aprimorado para debugging
         res.status(500).json({ 
             message: 'Server error fetching conversations list', 
             error: error.message, 
@@ -345,6 +345,7 @@ const sendMessage = async (req, res) => {
         };
 
         if (io) {
+             // Emite a mensagem via Socket.IO para todos na sala
              io.to(conversation_id).emit('new_message', newMessage);
         }
 
