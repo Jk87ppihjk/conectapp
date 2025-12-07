@@ -186,18 +186,24 @@ const getConversations = async (req, res) => {
                 m.sender_id AS lastMessageSenderId
             FROM conversations c
             JOIN conversation_participants cp ON c.id = cp.conversation_id
-            JOIN conversation_participants cp2 ON c.id = cp2.conversation_id AND cp2.user_id != ?
+            -- Encontra o ID do outro participante (cp2) que não é o usuário logado (?)
+            JOIN conversation_participants cp2 
+                ON c.id = cp2.conversation_id 
+                AND cp2.user_id != ? 
+            -- Junta com a tabela de usuários para obter os dados do contato
             JOIN users u ON cp2.user_id = u.id
+            -- Junta com a tabela de mensagens para obter a última mensagem
             LEFT JOIN messages m ON m.conversation_id = c.id
                 AND m.id = (
+                    -- Subconsulta para encontrar o ID da última mensagem para esta conversa
                     SELECT MAX(id)
                     FROM messages
                     WHERE conversation_id = c.id
                 )
-            WHERE cp.user_id = ?
+            WHERE cp.user_id = ? -- Filtra apenas as conversas do usuário logado
             ORDER BY c.updated_at DESC;
             `,
-            [userId, userId]
+            [userId, userId] 
         );
 
         const formattedConversations = conversations.map(conv => {
@@ -217,7 +223,12 @@ const getConversations = async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching conversations list:', error);
-        res.status(500).json({ message: 'Server error fetching conversations list' });
+        // ATUALIZADO: Retorna detalhes do erro para ajudar no debug do SQL
+        res.status(500).json({ 
+            message: 'Server error fetching conversations list', 
+            error: error.message, 
+            sqlState: error.sqlState || 'N/A' 
+        });
     }
 };
 
@@ -358,5 +369,5 @@ module.exports = {
     getConversations,
     getConversationMessages, 
     sendMessage,
-    getUserProfile // EXPORTADO
+    getUserProfile 
 };
