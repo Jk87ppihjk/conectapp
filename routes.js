@@ -9,8 +9,8 @@ const {
     getConversations,
     getConversationMessages, 
     sendMessage,
-    getUserProfile // IMPORTADO
-} = require('./controllers');
+    getUserProfile // Certifique-se que está aqui
+} = require('./controllers'); // Certifique-se que o caminho está correto
 const { authenticateToken, upload } = require('./middleware');
 
 // Rotas de Autenticação
@@ -18,7 +18,7 @@ router.post('/auth/register', register);
 router.post('/auth/login', login);
 
 // Rotas de Usuário (Protegidas)
-// NOVO: Rota para buscar o perfil do usuário logado
+// Linha 22 (aprox.) - Onde o erro pode estar:
 router.get('/user/profile', authenticateToken, getUserProfile); 
 router.get('/users/search-by-email', authenticateToken, searchUserByEmail);
 
